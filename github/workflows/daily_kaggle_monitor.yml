@@ -1,0 +1,76 @@
+name: manual-kaggle-monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      competition:
+        description: "Kaggle competition slug または URL"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      INPUT_COMPETITION: ${{ github.event.inputs.competition }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Override competition in config when manually provided
+        if: ${{ env.INPUT_COMPETITION != '' }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          import os
+          p = Path('config/config.example.yml')
+          data = yaml.safe_load(p.read_text(encoding='utf-8'))
+          data['competition'] = os.environ['INPUT_COMPETITION']
+          p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
+          PY
+
+      - name: Install Kaggle CLI only when explicitly enabled in config
+        run: |
+          python - <<'PY'
+          import yaml, subprocess, sys
+          from pathlib import Path
+          cfg = yaml.safe_load(Path('config/config.example.yml').read_text(encoding='utf-8'))
+          if bool(cfg.get('use_kaggle_cli_for_meta_download', False)):
+              subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'kaggle'])
+          PY
+
+      - name: Run monitor
+        run: |
+          PYTHONPATH=src python -m kaggle_comp_monitor.main --config config/config.example.yml
+
+      - name: Show report in workflow summary
+        run: |
+          cat outputs/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add outputs/ config/config.example.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: update kaggle monitor outputs"
+          git push
