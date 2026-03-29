@@ -1,0 +1,22 @@
+# ここは slug でも URL でもよい
+competition: "https://www.kaggle.com/competitions/map-charting-student-math-misunderstandings"
+
+# false を既定にしています。
+# まずブラウザで Meta Kaggle / Meta Kaggle Code を取得・配置し、
+# 実行時は増分判定だけを行う想定です。
+# true にした場合だけ、不足 CSV の取得に kaggle CLI を使います。
+use_kaggle_cli_for_meta_download: false
+
+outputs_dir: "outputs"
+meta_kaggle_dir: "outputs/meta_kaggle"
+state_db_path: "outputs/state/monitor.db"
+request_timeout_sec: 40
+user_agent: "Mozilla/5.0 (compatible; KaggleCompetitionDailyMonitor/1.2)"
+
+llm:
+  enabled: false
+  base_url: "https://api.openai.com/v1/chat/completions"
+  model: "gpt-4o-mini"
+  api_key_env: "OPENAI_API_KEY"
+  max_items_for_summary: 8
+  existing_code_path: ""
