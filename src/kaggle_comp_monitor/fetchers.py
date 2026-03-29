@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -23,12 +24,10 @@ class KaggleContentFetcher:
         soup = BeautifulSoup(html, "lxml")
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
-        text = soup.get_text("
-")
+        text = soup.get_text("\n")
         lines = [line.strip() for line in text.splitlines()]
         lines = [line for line in lines if line]
-        return "
-".join(lines)
+        return "\n".join(lines)
 
     def fetch_discussion_text(self, url: str) -> str:
         html = self._fetch_html(url)
@@ -37,10 +36,8 @@ class KaggleContentFetcher:
     def fetch_code_text(self, url: str) -> str:
         html = self._fetch_html(url)
 
-        # まずページ全体のテキストを落とす
         cleaned = self._clean_text_from_html(html)
 
-        # 次に Next.js 系の script 内 JSON からコード断片っぽいものを拾える場合だけ拾う
         snippets: list[str] = []
         soup = BeautifulSoup(html, "lxml")
         for script in soup.find_all("script"):
@@ -62,34 +59,36 @@ class KaggleContentFetcher:
                     continue
                 seen.add(s2)
                 uniq.append(s2)
+
             if uniq:
-                chunks.append("
+                chunks.append(
+                    "\n\n=== EXTRACTED_CODE_CANDIDATES ===\n"
+                    + "\n\n---\n\n".join(uniq[:5])
+                )
 
-=== EXTRACTED_CODE_CANDIDATES ===
-" + "
-
----
-
-".join(uniq[:5]))
         return "".join(chunks)
 
     @staticmethod
     def _extract_code_like_strings(text: str) -> list[str]:
         found: list[str] = []
-        # JSON文字列中の code/source/content をゆるく抽出
+
         patterns = [
-            r'"source"\s*:\s*"((?:\.|[^"\]){80,})"',
-            r'"content"\s*:\s*"((?:\.|[^"\]){80,})"',
-            r'"code"\s*:\s*"((?:\.|[^"\]){80,})"',
+            r'"source"\s*:\s*"((?:\\.|[^"\\]){80,})"',
+            r'"content"\s*:\s*"((?:\\.|[^"\\]){80,})"',
+            r'"code"\s*:\s*"((?:\\.|[^"\\]){80,})"',
         ]
+
         for pat in patterns:
             for m in re.finditer(pat, text, flags=re.DOTALL):
                 raw = m.group(1)
                 try:
                     decoded = json.loads('"' + raw + '"')
                 except Exception:
-                    decoded = raw.encode('utf-8', errors='ignore').decode('unicode_escape', errors='ignore')
+                    decoded = raw.encode("utf-8", errors="ignore").decode(
+                        "unicode_escape", errors="ignore"
+                    )
                 found.append(decoded)
+
         return found
 
     @staticmethod
@@ -107,8 +106,5 @@ class KaggleContentFetcher:
                 text = p.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 text = p.read_text(encoding="utf-8", errors="ignore")
-            chunks.append(f"
-
-### FILE: {p.name}
-{text}")
+            chunks.append(f"\n\n### FILE: {p.name}\n{text}")
         return "".join(chunks).strip()
